@@ -104,3 +104,36 @@ We see the following printed:
 
 We requested a maximum of 3 elements when we got a subscription and didn't increase the demand, so we've received only 3 values. If we change the returned value to
 `.unlimited` or `max(1)` we will get all 6 values and even a completion.
+
+### Promise and Future
+
+Now, moving further and we meet Promises. This thing exists in JavaScript and it's interesting how it got implemented in Swift with Combine. 
+Pre-Combine people wrote [libraries](https://github.com/khanlou/Promise) to support it.
+
+The idea is to asynchroniously get the returned value in the *future*. This is exactly like completion handlers. And, actually, 
+`Future` is simply a class which conforms to Publisher and contains a completion handler AKA Promise. Let's peek inside:
+
+    class Future<Output, Failure> : Publisher where Failure : Error {
+
+        /// A type that represents a closure to invoke in the future, when an element or error is available.
+        public typealias Promise = (Result<Output, Failure>) -> Void
+
+        /// Creates a publisher that invokes a promise closure when the publisher emits an element.
+        public init(_ attemptToFulfill: @escaping (@escaping Future<Output, Failure>.Promise) -> Void)
+
+        /// Attaches the specified subscriber to this publisher.
+        final public func receive<S>(subscriber: S) where Output == S.Input, Failure == S.Failure, S : Subscriber
+    }
+
+You also can get a value from a Future
+
+    var value: Output { get async }
+
+Interesting that it also uses Swift Concurrency.
+
+#### Thoughts
+
+- If you sink to a future again, it will not execute a promise again, it will immediately return a value. Futures emit value only once.
+- Future executes before the subscription. It is greedy and not like regular publishers that are lazy.
+
+### Subject
