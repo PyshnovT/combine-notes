@@ -244,4 +244,35 @@ This is also necessary because you cannot specialize the Publisher protocol,
 e.g., you cannot define the type as Publisher<UIImage, Never>.
 """
 
+### Swift Concurrency + Combine
+
+No way, you can simply for-loop on asynchronously emitted values!
+
+    let subject = CurrentValueSubject<Int, Never>(0)
+    
+    Task {
+        for await element in subject.values {
+            print("Element: \(element)")
+        }
+        
+        print("Completed.")
+    }
+    
+    subject.send(1)
+    subject.send(2)
+    subject.send(3)
+    
+    subject.send(completion: .finished)
+
+Output:
+
+    Element: 0
+    Element: 1
+    Element: 2
+    Element: 3
+    Completed.
+
+Isn't it just amazing? You don't even have to subscribe, you can just use for-await-in loop! It's possible because subject.values is 
+an `AsyncPublisher` which conforms to `AsyncSequence`. And anything that's `AsyncSequence` can be used with for-await-in.
+
 
