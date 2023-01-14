@@ -137,3 +137,111 @@ Interesting that it also uses Swift Concurrency.
 - Future executes before the subscription. It is greedy and not like regular publishers that are lazy.
 
 ### Subject
+
+#### PassthroughSubject
+
+Tutorial says we use `PassthroughSubject` to send values to Subscribers from non-Combine imperative code. I have to look at an example to understand.
+
+Let's take a look inside a documentaion:
+
+    /// A subject that broadcasts elements to downstream subscribers.
+    ///
+    /// As a concrete implementation of ``Subject``, the ``PassthroughSubject`` provides a convenient way to adapt existing imperative code to the Combine model.
+    final public class PassthroughSubject<Output, Failure> : Subject where Failure : Error {
+
+        public init()
+
+        /// Sends a subscription to the subscriber.
+        ///
+        /// This call provides the ``Subject`` an opportunity to establish demand for any new upstream subscriptions.
+        final public func send(subscription: Subscription)
+
+        /// Attaches the specified subscriber to this publisher.
+        final public func receive<S>(subscriber: S) where Output == S.Input, Failure == S.Failure, S : Subscriber
+
+        /// Sends a value to the subscriber.
+        final public func send(_ input: Output)
+
+        /// Sends a completion signal to the subscriber.
+        final public func send(completion: Subscribers.Completion<Failure>)
+    }
+
+It looks like you have to send values to the subject and they will be published to all subscribers.
+Which means this is sort of a very lightweight Publisher that simply redirects values, heh.
+
+Down the rabbit hole:
+
+    /// A publisher that exposes a method for outside callers to publish elements.
+    ///
+    /// A subject is a publisher that you can use to ”inject” values into a stream, by calling its ``Subject/send(_:)`` method. This can be useful for adapting existing imperative code to the Combine model.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public protocol Subject<Output, Failure> : AnyObject, Publisher {
+
+        /// Sends a value to the subscriber.
+        func send(_ value: Self.Output)
+
+        /// Sends a completion signal to the subscriber.
+        func send(completion: Subscribers.Completion<Self.Failure>)
+
+        /// Sends a subscription to the subscriber.
+        func send(subscription: Subscription)
+    }
+
+So, a Subject is a Protocol which also conforms to a Publisher. Now I think I got it.
+
+Side note: (I tried to nil a subscription and it has the same effect as calling .cancel() on it)
+
+Since PassthroughSubject is simply a wrapper, we can't get the current value! Imagine that. For this we need to look at `CurrentValueSubject`.
+I guess it is the same thing but it stores last published value for us.
+
+    /// A subject that wraps a single value and publishes a new element whenever the value changes.
+    ///
+    /// Unlike ``PassthroughSubject``, ``CurrentValueSubject`` maintains a buffer of the most recently published element.
+    final public class CurrentValueSubject<Output, Failure> : Subject where Failure : Error {
+
+        /// The value wrapped by this subject, published as a new element whenever it changes.
+        final public var value: Output
+
+        /// Creates a current value subject with the given initial value.
+        ///
+        /// - Parameter value: The initial value to publish.
+        public init(_ value: Output)
+
+        /// ... evereything else is same as in `PassthroughSubject` ...
+    }
+
+### eraseToAnyPublisher()
+
+I saw this method almost on every chain and always wondered why they use it that much.
+Let's dissect it:
+
+Tutorial says you erase type to hide concrete publishers from subscribers.
+
+`func eraseToAnyPublisher()` lives in an extension on Publisher protocol, which means any publisher can be erased to AnyPublisher (no pun intended!)
+
+    public struct AnyPublisher<Output, Failure> : CustomStringConvertible, CustomPlaygroundDisplayConvertible where Failure : Error {
+
+        public var description: String { get }
+
+        public var playgroundDescription: Any { get }
+
+        /// Creates a type-erasing publisher to wrap the provided publisher.
+        ///
+        /// - Parameter publisher: A publisher to wrap with a type-eraser.
+        @inlinable public init<P>(_ publisher: P) where Output == P.Output, Failure == P.Failure, P : Publisher
+    }
+
+So it is simply a struct which holds a pointer to the actual Publisher.
+
+I believe its a wrapper-struct and not simply a typealias, because otherwise you could just (publisher as? CurrentValueSubject).send..
+
+Oh, the tutorial confirmed this thought.
+
+"""
+The eraseToAnyPublisher() operator wraps the provided publisher in an instance of AnyPublisher, 
+hiding the fact that the publisher is actually a PassthroughSubject. 
+This is also necessary because you cannot specialize the Publisher protocol, 
+e.g., you cannot define the type as Publisher<UIImage, Never>.
+"""
+
+
